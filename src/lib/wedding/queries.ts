@@ -7,6 +7,9 @@ export type Convidado = {
   email: string | null;
   telefone: string | null;
   lugares: number;
+  vagas_confirmadas: number;
+  acompanhantes: string[];
+  codigo_acesso: string | null;
   rsvp_status: "pendente" | "confirmado" | "recusado";
   confirmado_em: string | null;
   mensagem: string | null;
