@@ -14,16 +14,212 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      configuracoes: {
+        Row: {
+          chave: string
+          updated_at: string
+          valor: string | null
+        }
+        Insert: {
+          chave: string
+          updated_at?: string
+          valor?: string | null
+        }
+        Update: {
+          chave?: string
+          updated_at?: string
+          valor?: string | null
+        }
+        Relationships: []
+      }
+      convidados: {
+        Row: {
+          confirmado_em: string | null
+          created_at: string
+          email: string | null
+          id: string
+          lugares: number
+          mensagem: string | null
+          nome: string
+          rsvp_status: Database["public"]["Enums"]["rsvp_status"]
+          telefone: string | null
+          updated_at: string
+        }
+        Insert: {
+          confirmado_em?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          lugares?: number
+          mensagem?: string | null
+          nome: string
+          rsvp_status?: Database["public"]["Enums"]["rsvp_status"]
+          telefone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          confirmado_em?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          lugares?: number
+          mensagem?: string | null
+          nome?: string
+          rsvp_status?: Database["public"]["Enums"]["rsvp_status"]
+          telefone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      fotos_galeria: {
+        Row: {
+          created_at: string
+          foto_url: string
+          id: string
+          legenda: string | null
+          ordem: number
+        }
+        Insert: {
+          created_at?: string
+          foto_url: string
+          id?: string
+          legenda?: string | null
+          ordem?: number
+        }
+        Update: {
+          created_at?: string
+          foto_url?: string
+          id?: string
+          legenda?: string | null
+          ordem?: number
+        }
+        Relationships: []
+      }
+      momentos_historia: {
+        Row: {
+          created_at: string
+          data_momento: string
+          descricao: string | null
+          foto_url: string | null
+          id: string
+          ordem: number
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          data_momento: string
+          descricao?: string | null
+          foto_url?: string | null
+          id?: string
+          ordem?: number
+          titulo: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          data_momento?: string
+          descricao?: string | null
+          foto_url?: string | null
+          id?: string
+          ordem?: number
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      presentes: {
+        Row: {
+          created_at: string
+          descricao: string | null
+          foto_url: string | null
+          id: string
+          nome: string
+          ordem: number
+          preco: number | null
+          status: Database["public"]["Enums"]["presente_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          descricao?: string | null
+          foto_url?: string | null
+          id?: string
+          nome: string
+          ordem?: number
+          preco?: number | null
+          status?: Database["public"]["Enums"]["presente_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          descricao?: string | null
+          foto_url?: string | null
+          id?: string
+          nome?: string
+          ordem?: number
+          preco?: number | null
+          status?: Database["public"]["Enums"]["presente_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      presente_status: "disponivel" | "presenteado"
+      rsvp_status: "pendente" | "confirmado" | "recusado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +346,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      presente_status: ["disponivel", "presenteado"],
+      rsvp_status: ["pendente", "confirmado", "recusado"],
+    },
   },
 } as const
