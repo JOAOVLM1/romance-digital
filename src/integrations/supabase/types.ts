@@ -34,6 +34,8 @@ export type Database = {
       }
       convidados: {
         Row: {
+          acompanhantes: Json
+          codigo_acesso: string | null
           confirmado_em: string | null
           created_at: string
           email: string | null
@@ -44,8 +46,11 @@ export type Database = {
           rsvp_status: Database["public"]["Enums"]["rsvp_status"]
           telefone: string | null
           updated_at: string
+          vagas_confirmadas: number
         }
         Insert: {
+          acompanhantes?: Json
+          codigo_acesso?: string | null
           confirmado_em?: string | null
           created_at?: string
           email?: string | null
@@ -56,8 +61,11 @@ export type Database = {
           rsvp_status?: Database["public"]["Enums"]["rsvp_status"]
           telefone?: string | null
           updated_at?: string
+          vagas_confirmadas?: number
         }
         Update: {
+          acompanhantes?: Json
+          codigo_acesso?: string | null
           confirmado_em?: string | null
           created_at?: string
           email?: string | null
@@ -68,6 +76,7 @@ export type Database = {
           rsvp_status?: Database["public"]["Enums"]["rsvp_status"]
           telefone?: string | null
           updated_at?: string
+          vagas_confirmadas?: number
         }
         Relationships: []
       }
