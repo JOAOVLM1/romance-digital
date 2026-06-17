@@ -1,6 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
+export type ExpectedAttendee = { id: string; name: string };
+
 export type Convidado = {
   id: string;
   nome: string;
@@ -9,12 +11,15 @@ export type Convidado = {
   lugares: number;
   vagas_confirmadas: number;
   acompanhantes: string[];
+  expected_attendees: ExpectedAttendee[];
+  rsvp_token: string;
   codigo_acesso: string | null;
   rsvp_status: "pendente" | "confirmado" | "recusado";
   confirmado_em: string | null;
   mensagem: string | null;
   created_at: string;
 };
+
 
 export type Presente = {
   id: string;
