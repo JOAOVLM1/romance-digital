@@ -39,11 +39,13 @@ export type Database = {
           confirmado_em: string | null
           created_at: string
           email: string | null
+          expected_attendees: Json
           id: string
           lugares: number
           mensagem: string | null
           nome: string
           rsvp_status: Database["public"]["Enums"]["rsvp_status"]
+          rsvp_token: string
           telefone: string | null
           updated_at: string
           vagas_confirmadas: number
@@ -54,11 +56,13 @@ export type Database = {
           confirmado_em?: string | null
           created_at?: string
           email?: string | null
+          expected_attendees?: Json
           id?: string
           lugares?: number
           mensagem?: string | null
           nome: string
           rsvp_status?: Database["public"]["Enums"]["rsvp_status"]
+          rsvp_token: string
           telefone?: string | null
           updated_at?: string
           vagas_confirmadas?: number
@@ -69,11 +73,13 @@ export type Database = {
           confirmado_em?: string | null
           created_at?: string
           email?: string | null
+          expected_attendees?: Json
           id?: string
           lugares?: number
           mensagem?: string | null
           nome?: string
           rsvp_status?: Database["public"]["Enums"]["rsvp_status"]
+          rsvp_token?: string
           telefone?: string | null
           updated_at?: string
           vagas_confirmadas?: number
