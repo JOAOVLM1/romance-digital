@@ -95,6 +95,21 @@ export const convidadosQuery = queryOptions({
       .select("*")
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return (data ?? []) as Convidado[];
+    return (data ?? []) as unknown as Convidado[];
   },
 });
+
+export const convidadoByTokenQuery = (token: string) =>
+  queryOptions({
+    queryKey: ["wedding", "convidado-token", token],
+    queryFn: async (): Promise<Convidado | null> => {
+      const { data, error } = await supabase
+        .from("convidados")
+        .select("*")
+        .eq("rsvp_token", token)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as unknown as Convidado | null;
+    },
+  });
+
