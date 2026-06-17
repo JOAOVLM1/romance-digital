@@ -2,12 +2,32 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { convidadosQuery, type Convidado } from "@/lib/wedding/queries";
+import {
+  convidadosQuery,
+  type Convidado,
+  type ExpectedAttendee,
+} from "@/lib/wedding/queries";
 
 type Filter = "todos" | "confirmado" | "pendente" | "recusado";
 
 function genCodigo() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function rsvpUrl(token: string) {
+  if (typeof window === "undefined") return `/confirmar/${token}`;
+  return `${window.location.origin}/confirmar/${token}`;
+}
+
+function newAttendee(name = ""): ExpectedAttendee {
+  return { id: crypto.randomUUID().slice(0, 8), name };
+}
+
+function ensureLength(list: ExpectedAttendee[], n: number): ExpectedAttendee[] {
+  const out = [...list];
+  while (out.length < n) out.push(newAttendee());
+  out.length = n;
+  return out;
 }
 
 export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
@@ -16,14 +36,22 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
 
   const [filter, setFilter] = useState<Filter>("todos");
   const [search, setSearch] = useState("");
-  const [verNomes, setVerNomes] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const [novo, setNovo] = useState({
+  const [novo, setNovo] = useState<{
+    nome: string;
+    email: string;
+    telefone: string;
+    lugares: number;
+    usarCodigo: boolean;
+    expected: ExpectedAttendee[];
+  }>({
     nome: "",
     email: "",
     telefone: "",
     lugares: 1,
     usarCodigo: false,
+    expected: [newAttendee()],
   });
 
   const filtrados = useMemo(() => {
@@ -43,33 +71,51 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
   const add = useMutation({
     mutationFn: async () => {
       if (!novo.nome.trim()) throw new Error("Nome obrigatório");
-      const { error } = await supabase.from("convidados").insert({
-        nome: novo.nome.trim(),
-        email: novo.email || null,
-        telefone: novo.telefone || null,
-        lugares: Number(novo.lugares) || 1,
-        codigo_acesso: novo.usarCodigo ? genCodigo() : null,
-      } as any);
+      const expected = novo.expected
+        .map((e) => ({ ...e, name: e.name.trim() }))
+        .filter((e, i) => i < novo.lugares); // exact lugares-length, but keep blanks
+      const { data, error } = await supabase
+        .from("convidados")
+        .insert({
+          nome: novo.nome.trim(),
+          email: novo.email || null,
+          telefone: novo.telefone || null,
+          lugares: Number(novo.lugares) || 1,
+          codigo_acesso: novo.usarCodigo ? genCodigo() : null,
+          expected_attendees: expected as any,
+        } as any)
+        .select("rsvp_token")
+        .single();
       if (error) throw error;
+      return data as { rsvp_token: string };
     },
-    onSuccess: () => {
-      toast.success("Convite adicionado");
-      setNovo({ nome: "", email: "", telefone: "", lugares: 1, usarCodigo: false });
+    onSuccess: (data) => {
+      toast.success("Convite criado");
+      if (data?.rsvp_token) {
+        const url = rsvpUrl(data.rsvp_token);
+        navigator.clipboard?.writeText(url).catch(() => {});
+        toast.message("Link copiado para a área de transferência", { description: url });
+      }
+      setNovo({
+        nome: "",
+        email: "",
+        telefone: "",
+        lugares: 1,
+        usarCodigo: false,
+        expected: [newAttendee()],
+      });
       invalidate();
     },
     onError: (e: any) => toast.error(e.message),
   });
 
-  const updateLugares = useMutation({
-    mutationFn: async ({ id, lugares }: { id: string; lugares: number }) => {
-      const { error } = await supabase
-        .from("convidados")
-        .update({ lugares } as any)
-        .eq("id", id);
+  const updateConvidado = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: any }) => {
+      const { error } = await supabase.from("convidados").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("Vagas atualizadas");
+      toast.success("Atualizado");
       invalidate();
     },
     onError: (e: any) => toast.error(e.message),
@@ -122,37 +168,10 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
     onError: (e: any) => toast.error(e.message),
   });
 
-  const importCSV = async (file: File) => {
-    const text = await file.text();
-    const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    const [headerLine, ...rows] = lines;
-    const headers = headerLine.split(",").map((h) => h.trim().toLowerCase());
-    const idx = (k: string) => headers.indexOf(k);
-    const inserts = rows
-      .map((r) => {
-        const cols = r.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-        const nome = cols[idx("name") >= 0 ? idx("name") : idx("nome") >= 0 ? idx("nome") : 0];
-        if (!nome) return null;
-        const lugIdx = idx("allowed_seats") >= 0 ? idx("allowed_seats") : idx("lugares");
-        return {
-          nome,
-          email: idx("email") >= 0 ? cols[idx("email")] || null : null,
-          telefone:
-            idx("phone") >= 0
-              ? cols[idx("phone")] || null
-              : idx("telefone") >= 0
-                ? cols[idx("telefone")] || null
-                : null,
-          lugares: lugIdx >= 0 ? Number(cols[lugIdx]) || 1 : 1,
-        };
-      })
-      .filter(Boolean) as any[];
-    if (inserts.length === 0) return toast.error("Nenhum convite válido encontrado");
-    const { error } = await supabase.from("convidados").insert(inserts);
-    if (error) return toast.error(error.message);
-    toast.success(`${inserts.length} convites importados`);
-    invalidate();
-  };
+  function setNovoLugares(n: number) {
+    const safe = Math.max(1, Math.min(20, n || 1));
+    setNovo((p) => ({ ...p, lugares: safe, expected: ensureLength(p.expected, safe) }));
+  }
 
   const exportCSV = () => {
     const rows = [
@@ -163,8 +182,10 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
         "allowed_seats",
         "confirmed_seats",
         "attendees",
+        "expected",
         "status",
         "confirmado_em",
+        "rsvp_link",
         "codigo_acesso",
         "mensagem",
       ],
@@ -175,8 +196,10 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
         c.lugares,
         c.vagas_confirmadas,
         (c.acompanhantes || []).join(" | "),
+        (c.expected_attendees || []).map((e) => e.name).filter(Boolean).join(" | "),
         c.rsvp_status,
         c.confirmado_em || "",
+        rsvpUrl(c.rsvp_token),
         c.codigo_acesso || "",
         (c.mensagem || "").replace(/[\r\n,]/g, " "),
       ]),
@@ -207,15 +230,6 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
     vagasConfirmadas: convidados.reduce((s, c) => s + (c.vagas_confirmadas || 0), 0),
   };
 
-  const todosNomes = useMemo(
-    () =>
-      convidados
-        .filter((c) => c.rsvp_status === "confirmado")
-        .flatMap((c) => (c.acompanhantes || []).map((n) => ({ nome: n, convite: c.nome })))
-        .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
-    [convidados],
-  );
-
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
@@ -238,61 +252,117 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
 
       {/* Add new */}
       <div className="border border-charcoal/10 p-5 bg-card">
-        <h3 className="serif italic text-xl text-charcoal mb-4">Adicionar convite</h3>
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <input
-            placeholder="Nome do convite* (ex: Família Silva)"
-            value={novo.nome}
-            onChange={(e) => setNovo({ ...novo, nome: e.target.value })}
-            className="md:col-span-2 border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
-          />
-          <input
-            placeholder="E-mail"
-            type="email"
-            value={novo.email}
-            onChange={(e) => setNovo({ ...novo, email: e.target.value })}
-            className="border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
-          />
-          <input
-            placeholder="Telefone"
-            value={novo.telefone}
-            onChange={(e) => setNovo({ ...novo, telefone: e.target.value })}
-            className="border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
-          />
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="mono text-[9px] uppercase tracking-widest text-charcoal/50">
-                Vagas
-              </label>
-              <input
-                type="number"
-                min={1}
-                value={novo.lugares}
-                onChange={(e) => setNovo({ ...novo, lugares: Number(e.target.value) })}
-                className="w-full border border-charcoal/15 px-3 py-1 bg-transparent focus:outline-none focus:border-rose text-sm"
-              />
-            </div>
-            <button
-              onClick={() => add.mutate()}
-              disabled={add.isPending}
-              className="self-end flex-1 bg-charcoal text-ivory mono text-[10px] uppercase tracking-widest hover:bg-rose transition-colors px-3 py-2"
-            >
-              Adicionar
-            </button>
+        <h3 className="serif italic text-xl text-charcoal mb-4">Novo convite</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="mono text-[9px] uppercase tracking-widest text-charcoal/50">
+              Nome do convite *
+            </label>
+            <input
+              placeholder="Família Silva"
+              value={novo.nome}
+              onChange={(e) => setNovo({ ...novo, nome: e.target.value })}
+              className="w-full border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
+            />
+          </div>
+          <div>
+            <label className="mono text-[9px] uppercase tracking-widest text-charcoal/50">
+              Vagas permitidas
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={novo.lugares}
+              onChange={(e) => setNovoLugares(Number(e.target.value))}
+              className="w-full border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
+            />
+          </div>
+          <div>
+            <label className="mono text-[9px] uppercase tracking-widest text-charcoal/50">
+              E-mail
+            </label>
+            <input
+              placeholder="email@exemplo.com"
+              type="email"
+              value={novo.email}
+              onChange={(e) => setNovo({ ...novo, email: e.target.value })}
+              className="w-full border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
+            />
+          </div>
+          <div>
+            <label className="mono text-[9px] uppercase tracking-widest text-charcoal/50">
+              Telefone
+            </label>
+            <input
+              placeholder="(00) 00000-0000"
+              value={novo.telefone}
+              onChange={(e) => setNovo({ ...novo, telefone: e.target.value })}
+              className="w-full border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
+            />
           </div>
         </div>
-        <label className="flex items-center gap-2 mt-3 text-xs text-charcoal/70 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={novo.usarCodigo}
-            onChange={(e) => setNovo({ ...novo, usarCodigo: e.target.checked })}
-          />
-          Gerar código de acesso único para este convite
-        </label>
-        <p className="text-[11px] text-charcoal/40 mt-2">
-          Defina quantas pessoas este convite permite. O convidado só poderá confirmar até esse
-          número.
-        </p>
+
+        <div className="mt-5">
+          <p className="mono text-[9px] uppercase tracking-widest text-charcoal/50">
+            Convidados esperados (opcional)
+          </p>
+          <p className="text-[11px] text-charcoal/50 italic mt-1 mb-3">
+            Pré-cadastre os nomes. Deixe em branco para que o convidado preencha na hora da
+            confirmação.
+          </p>
+          <div className="space-y-2 transition-all">
+            {novo.expected.map((att, i) => (
+              <div
+                key={att.id}
+                className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200"
+              >
+                <span className="mono text-[10px] uppercase tracking-widest text-charcoal/40 w-24">
+                  Convidado {i + 1}
+                </span>
+                <input
+                  type="text"
+                  placeholder="Nome completo"
+                  value={att.name}
+                  onChange={(e) => {
+                    const copy = [...novo.expected];
+                    copy[i] = { ...copy[i], name: e.target.value };
+                    setNovo({ ...novo, expected: copy });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const next = document.querySelectorAll<HTMLInputElement>(
+                        "[data-att-input]",
+                      );
+                      next[i + 1]?.focus();
+                    }
+                  }}
+                  data-att-input
+                  className="flex-1 border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mt-5 gap-3 flex-wrap">
+          <label className="flex items-center gap-2 text-xs text-charcoal/70 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={novo.usarCodigo}
+              onChange={(e) => setNovo({ ...novo, usarCodigo: e.target.checked })}
+            />
+            Gerar código de acesso único
+          </label>
+          <button
+            onClick={() => add.mutate()}
+            disabled={add.isPending}
+            className="bg-charcoal text-ivory mono text-[10px] uppercase tracking-widest hover:bg-rose transition-colors px-6 py-2 disabled:opacity-50"
+          >
+            {add.isPending ? "Criando..." : "Criar convite"}
+          </button>
+        </div>
       </div>
 
       {/* Controls */}
@@ -324,189 +394,251 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
             </button>
           ))}
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setVerNomes((v) => !v)}
-            className="mono text-[10px] uppercase tracking-widest px-3 py-2 border border-charcoal/15 hover:border-charcoal/40"
-          >
-            {verNomes ? "Ocultar nomes" : "Ver todos nomes"}
-          </button>
-          <label className="mono text-[10px] uppercase tracking-widest px-3 py-2 border border-charcoal/15 hover:border-charcoal/40 cursor-pointer">
-            Importar CSV
-            <input
-              type="file"
-              accept=".csv"
-              hidden
-              onChange={(e) => e.target.files?.[0] && importCSV(e.target.files[0])}
-            />
-          </label>
-          <button
-            onClick={exportCSV}
-            className="mono text-[10px] uppercase tracking-widest px-3 py-2 border border-charcoal/15 hover:border-charcoal/40"
-          >
-            Exportar CSV
-          </button>
-        </div>
+        <button
+          onClick={exportCSV}
+          className="mono text-[10px] uppercase tracking-widest px-3 py-2 border border-charcoal/15 hover:border-charcoal/40"
+        >
+          Exportar CSV
+        </button>
       </div>
 
-      {verNomes && (
-        <div className="border border-charcoal/10 p-5 bg-card">
-          <h3 className="serif italic text-xl text-charcoal mb-3">
-            Todos os convidados confirmados ({todosNomes.length})
-          </h3>
-          {todosNomes.length === 0 ? (
-            <p className="text-sm text-charcoal/50">Nenhum convidado confirmado ainda.</p>
-          ) : (
-            <ul className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-1 text-sm">
-              {todosNomes.map((n, i) => (
-                <li key={i} className="flex justify-between border-b border-charcoal/5 py-1">
-                  <span className="serif italic">{n.nome}</span>
-                  <span className="text-xs text-charcoal/50">{n.convite}</span>
-                </li>
-              ))}
-            </ul>
+      {/* List */}
+      <div className="space-y-2">
+        {filtrados.length === 0 && (
+          <div className="text-center py-12 text-charcoal/40 border border-charcoal/10 bg-card">
+            Nenhum convite encontrado.
+          </div>
+        )}
+        {filtrados.map((c) => (
+          <ConviteRow
+            key={c.id}
+            convidado={c}
+            expanded={expandedId === c.id}
+            onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+            onCopy={copiar}
+            onReset={() => resetRsvp.mutate(c.id)}
+            onRemove={() => {
+              if (confirm(`Remover ${c.nome}?`)) remove.mutate(c.id);
+            }}
+            onGenCodigo={() => gerarCodigo.mutate(c.id)}
+            onUpdate={(patch) => updateConvidado.mutate({ id: c.id, patch })}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConviteRow({
+  convidado,
+  expanded,
+  onToggle,
+  onCopy,
+  onReset,
+  onRemove,
+  onGenCodigo,
+  onUpdate,
+}: {
+  convidado: Convidado;
+  expanded: boolean;
+  onToggle: () => void;
+  onCopy: (s: string) => void;
+  onReset: () => void;
+  onRemove: () => void;
+  onGenCodigo: () => void;
+  onUpdate: (patch: any) => void;
+}) {
+  const link = rsvpUrl(convidado.rsvp_token);
+  const [lugares, setLugares] = useState(convidado.lugares);
+  const [expected, setExpected] = useState<ExpectedAttendee[]>(
+    ensureLength(convidado.expected_attendees || [], convidado.lugares),
+  );
+
+  function whatsapp() {
+    const msg = `Olá, ${convidado.nome}! 🎉\n\nVocê está convidado(a) para o nosso casamento!\nConfirme sua presença em: ${link}\n\nAguardamos vocês com carinho 💍`;
+    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
+  }
+
+  function emailShare() {
+    const subject = "Confirme sua presença no nosso casamento";
+    const body = `Olá, ${convidado.nome}!\n\nConfirme sua presença em: ${link}`;
+    window.location.href = `mailto:${convidado.email || ""}?subject=${encodeURIComponent(
+      subject,
+    )}&body=${encodeURIComponent(body)}`;
+  }
+
+  function salvarExpected() {
+    onUpdate({
+      lugares,
+      expected_attendees: expected.slice(0, lugares).map((e) => ({
+        id: e.id,
+        name: e.name.trim(),
+      })),
+    });
+  }
+
+  return (
+    <div className="border border-charcoal/10 bg-card">
+      <div className="grid grid-cols-12 gap-3 items-center p-4">
+        <div className="col-span-12 md:col-span-4">
+          <p className="serif italic text-lg text-charcoal">{convidado.nome}</p>
+          {(convidado.email || convidado.telefone) && (
+            <p className="text-[11px] text-charcoal/50 mt-0.5">
+              {[convidado.email, convidado.telefone].filter(Boolean).join(" · ")}
+            </p>
           )}
         </div>
-      )}
-
-      {/* Table */}
-      <div className="border border-charcoal/10 overflow-x-auto bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-sage/5 border-b border-charcoal/10">
-            <tr>
-              {[
-                "Nome do convite",
-                "Vagas perm.",
-                "Vagas conf.",
-                "Convidados",
-                "Status",
-                "Confirmado em",
-                "Código",
-                "Mensagem",
-                "Ações",
-              ].map((h) => (
-                <th
-                  key={h}
-                  className="text-left mono text-[10px] uppercase tracking-widest text-charcoal/60 px-3 py-3"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtrados.length === 0 && (
-              <tr>
-                <td colSpan={9} className="text-center py-10 text-charcoal/40">
-                  Nenhum convite encontrado.
-                </td>
-              </tr>
-            )}
-            {filtrados.map((c) => (
-              <tr key={c.id} className="border-b border-charcoal/5 hover:bg-sage/5 align-top">
-                <td className="px-3 py-3">
-                  <p className="serif italic">{c.nome}</p>
-                  {(c.email || c.telefone) && (
-                    <p className="text-[11px] text-charcoal/50 mt-0.5">
-                      {[c.email, c.telefone].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
-                </td>
-                <td className="px-3 py-3 text-center">
-                  <input
-                    type="number"
-                    min={1}
-                    defaultValue={c.lugares}
-                    onBlur={(e) => {
-                      const v = Number(e.target.value);
-                      if (v && v !== c.lugares)
-                        updateLugares.mutate({ id: c.id, lugares: v });
-                    }}
-                    className="w-16 border border-charcoal/15 px-2 py-1 bg-transparent text-center text-sm"
-                  />
-                </td>
-                <td className="px-3 py-3 text-center serif text-base">
-                  {c.vagas_confirmadas}
-                  <span className="text-charcoal/30 text-xs"> /{c.lugares}</span>
-                </td>
-                <td className="px-3 py-3 text-xs text-charcoal/70 max-w-[200px]">
-                  {(c.acompanhantes || []).length === 0 ? (
-                    <span className="text-charcoal/30">—</span>
-                  ) : (
-                    <ul className="space-y-0.5">
-                      {(c.acompanhantes || []).map((n, i) => (
-                        <li key={i} className="serif italic">
-                          {n}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </td>
-                <td className="px-3 py-3">
-                  <span
-                    className={`mono text-[10px] uppercase tracking-widest px-2 py-1 border ${
-                      c.rsvp_status === "confirmado"
-                        ? "border-sage text-sage"
-                        : c.rsvp_status === "recusado"
-                          ? "border-rose text-rose"
-                          : "border-charcoal/20 text-charcoal/50"
-                    }`}
-                  >
-                    {c.rsvp_status}
-                  </span>
-                </td>
-                <td className="px-3 py-3 text-xs text-charcoal/60">
-                  {c.confirmado_em
-                    ? new Date(c.confirmado_em).toLocaleDateString("pt-BR")
-                    : "—"}
-                </td>
-                <td className="px-3 py-3 text-xs">
-                  {c.codigo_acesso ? (
-                    <button
-                      onClick={() => copiar(c.codigo_acesso!)}
-                      className="mono uppercase tracking-widest text-charcoal/70 hover:text-rose border border-charcoal/15 px-2 py-1"
-                      title="Clique para copiar"
-                    >
-                      {c.codigo_acesso}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => gerarCodigo.mutate(c.id)}
-                      className="text-[11px] text-charcoal/40 hover:text-rose underline"
-                    >
-                      gerar
-                    </button>
-                  )}
-                </td>
-                <td className="px-3 py-3 text-xs text-charcoal/70 max-w-[200px] truncate">
-                  {c.mensagem || "—"}
-                </td>
-                <td className="px-3 py-3 space-y-1">
-                  {c.rsvp_status !== "pendente" && (
-                    <button
-                      onClick={() => resetRsvp.mutate(c.id)}
-                      className="block text-xs text-charcoal/60 hover:text-charcoal underline"
-                    >
-                      Resetar
-                    </button>
-                  )}
-                  <button
-                    onClick={() => confirm(`Remover ${c.nome}?`) && remove.mutate(c.id)}
-                    className="block text-xs text-rose hover:underline"
-                  >
-                    Remover
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="col-span-4 md:col-span-2 text-center">
+          <p className="mono text-[9px] uppercase tracking-widest text-charcoal/50">Vagas</p>
+          <p className="serif text-xl">
+            {convidado.vagas_confirmadas}
+            <span className="text-charcoal/30 text-xs"> / {convidado.lugares}</span>
+          </p>
+        </div>
+        <div className="col-span-4 md:col-span-2 text-center">
+          <span
+            className={`mono text-[10px] uppercase tracking-widest px-2 py-1 border ${
+              convidado.rsvp_status === "confirmado"
+                ? "border-sage text-sage"
+                : convidado.rsvp_status === "recusado"
+                  ? "border-rose text-rose"
+                  : "border-charcoal/20 text-charcoal/50"
+            }`}
+          >
+            {convidado.rsvp_status}
+          </span>
+        </div>
+        <div className="col-span-4 md:col-span-4 flex flex-wrap gap-1 justify-end">
+          <button
+            onClick={() => onCopy(link)}
+            className="mono text-[10px] uppercase tracking-widest px-2 py-1 border border-charcoal/15 hover:border-rose hover:text-rose"
+            title={link}
+          >
+            Copiar link
+          </button>
+          <button
+            onClick={whatsapp}
+            className="mono text-[10px] uppercase tracking-widest px-2 py-1 border border-sage/40 text-sage hover:bg-sage/10"
+          >
+            WhatsApp
+          </button>
+          <button
+            onClick={emailShare}
+            className="mono text-[10px] uppercase tracking-widest px-2 py-1 border border-charcoal/15 hover:border-charcoal/40"
+          >
+            Email
+          </button>
+          <button
+            onClick={onToggle}
+            className="mono text-[10px] uppercase tracking-widest px-2 py-1 border border-charcoal/15 hover:border-charcoal/40"
+          >
+            {expanded ? "Fechar" : "Editar"}
+          </button>
+        </div>
       </div>
 
-      <p className="text-xs text-charcoal/40">
-        Formato CSV: <code>name,email,phone,allowed_seats</code> (cabeçalho na primeira linha).
-        Exemplo: <code>"Família Oliveira,familia@email.com,65999999999,4"</code>
-      </p>
+      {expanded && (
+        <div className="border-t border-charcoal/10 p-4 bg-ivory/40 space-y-4">
+          <div>
+            <p className="mono text-[10px] uppercase tracking-widest text-charcoal/50 mb-2">
+              Convidados confirmados
+            </p>
+            {(convidado.acompanhantes || []).length === 0 ? (
+              <p className="text-xs text-charcoal/40 italic">Ainda sem confirmações.</p>
+            ) : (
+              <ul className="text-sm space-y-0.5">
+                {(convidado.acompanhantes || []).map((n, i) => (
+                  <li key={i} className="serif italic">
+                    ✅ {n}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {convidado.mensagem && (
+              <p className="text-xs text-charcoal/60 italic mt-3 border-l-2 border-rose/30 pl-2">
+                "{convidado.mensagem}"
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p className="mono text-[10px] uppercase tracking-widest text-charcoal/50 mb-2">
+              Pré-cadastrar convidados esperados
+            </p>
+            <div className="flex items-center gap-2 mb-3">
+              <label className="text-xs text-charcoal/60">Vagas:</label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={lugares}
+                onChange={(e) => {
+                  const v = Math.max(1, Math.min(20, Number(e.target.value) || 1));
+                  setLugares(v);
+                  setExpected(ensureLength(expected, v));
+                }}
+                className="w-20 border border-charcoal/15 px-2 py-1 bg-transparent text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              {expected.slice(0, lugares).map((att, i) => (
+                <div key={att.id} className="flex items-center gap-2">
+                  <span className="mono text-[10px] uppercase tracking-widest text-charcoal/40 w-24">
+                    Convidado {i + 1}
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Nome completo"
+                    value={att.name}
+                    onChange={(e) => {
+                      const copy = [...expected];
+                      copy[i] = { ...copy[i], name: e.target.value };
+                      setExpected(copy);
+                    }}
+                    className="flex-1 border border-charcoal/15 px-3 py-2 bg-transparent focus:outline-none focus:border-rose text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={salvarExpected}
+                className="mono text-[10px] uppercase tracking-widest px-4 py-2 bg-charcoal text-ivory hover:bg-rose"
+              >
+                Salvar alterações
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 items-center justify-between border-t border-charcoal/10 pt-3">
+            <div className="flex items-center gap-2 text-xs">
+              {convidado.codigo_acesso ? (
+                <span className="mono uppercase tracking-widest text-charcoal/60 border border-charcoal/15 px-2 py-1">
+                  Código: {convidado.codigo_acesso}
+                </span>
+              ) : (
+                <button
+                  onClick={onGenCodigo}
+                  className="text-charcoal/40 hover:text-rose underline"
+                >
+                  gerar código de acesso
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3 text-xs">
+              {convidado.rsvp_status !== "pendente" && (
+                <button onClick={onReset} className="text-charcoal/60 hover:text-charcoal underline">
+                  Resetar RSVP
+                </button>
+              )}
+              <button onClick={onRemove} className="text-rose hover:underline">
+                Remover convite
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
