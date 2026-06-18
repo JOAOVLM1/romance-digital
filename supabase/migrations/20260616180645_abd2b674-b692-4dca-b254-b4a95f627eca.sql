@@ -182,8 +182,8 @@ CREATE TRIGGER tg_config_updated BEFORE UPDATE ON public.configuracoes
 
 -- Seed default settings + sample data
 INSERT INTO public.configuracoes (chave, valor) VALUES
-  ('nome_noiva', 'Mariana'),
-  ('nome_noivo', 'Gabriel'),
+  ('nome_noiva', 'Layna'),
+  ('nome_noivo', 'Natan'),
   ('data_casamento', '2025-10-12T16:00:00'),
   ('tagline', 'Dois corações, uma história'),
   ('pix_chave', ''),
