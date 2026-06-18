@@ -12,8 +12,8 @@ function formatDate(iso: string) {
 }
 
 export function HeroSection({ config }: { config: ConfigMap }) {
-  const noiva = config.nome_noiva || "Mariana";
-  const noivo = config.nome_noivo || "Gabriel";
+  const noiva = config.nome_noiva || "Layna";
+  const noivo = config.nome_noivo || "Natan";
   const tagline = config.tagline || "Dois corações, uma história";
   const data = config.data_casamento;
 
