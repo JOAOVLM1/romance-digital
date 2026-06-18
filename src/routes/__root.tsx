@@ -55,7 +55,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Mariana & Gabriel — Nosso Casamento" },
+      { title: "Layna & Natan — Nosso Casamento" },
       { name: "description", content: "Convidamos você para celebrar conosco. Confirme sua presença, veja informações do evento e a lista de presentes." },
       { property: "og:title", content: "Mariana & Gabriel — Nosso Casamento" },
       { property: "og:description", content: "Convidamos você para celebrar conosco. Confirme sua presença, veja informações do evento e a lista de presentes." },
