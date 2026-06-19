@@ -54,7 +54,7 @@ export function InfoSection({ config }: { config: ConfigMap }) {
             </p>
             <div className="aspect-video w-full overflow-hidden rounded-sm border border-charcoal/10">
               <iframe
-                src={mapa}
+                src={<iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3842.5439410417903!2d-56.0456211!3d-15.615996899999999!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x939db10322743d35%3A0x86060229f73aecbf!2sVivans%20Complexo%20de%20Eventos!5e0!3m2!1spt-BR!2sbr!4v1781874854125!5m2!1spt-BR!2sbr" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>}
                 className="w-full h-full"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
