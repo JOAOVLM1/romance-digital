@@ -540,27 +540,64 @@ function ConviteRow({
 
       {expanded && (
         <div className="border-t border-charcoal/10 p-4 bg-ivory/40 space-y-4">
-          <div>
-            <p className="mono text-[10px] uppercase tracking-widest text-charcoal/50 mb-2">
-              Convidados confirmados
+          {(() => {
+            const confirmados = convidado.acompanhantes || [];
+            const expectedNames = (convidado.expected_attendees || [])
+              .map((e) => e.name?.trim())
+              .filter(Boolean) as string[];
+            const norm = (s: string) => s.toLowerCase().trim();
+            const confirmadosSet = new Set(confirmados.map(norm));
+            const recusadosDerivados =
+              convidado.rsvp_status === "recusado"
+                ? expectedNames
+                : expectedNames.filter((n) => !confirmadosSet.has(norm(n)));
+            return (
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <p className="mono text-[10px] uppercase tracking-widest text-sage mb-2">
+                    ✅ Confirmados ({confirmados.length})
+                  </p>
+                  {confirmados.length === 0 ? (
+                    <p className="text-xs text-charcoal/40 italic">Ainda sem confirmações.</p>
+                  ) : (
+                    <ul className="text-sm space-y-0.5">
+                      {confirmados.map((n, i) => (
+                        <li key={i} className="serif italic text-charcoal">
+                          {n}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <p className="mono text-[10px] uppercase tracking-widest text-rose mb-2">
+                    ❌ Recusaram ({recusadosDerivados.length})
+                  </p>
+                  {recusadosDerivados.length === 0 ? (
+                    <p className="text-xs text-charcoal/40 italic">
+                      {expectedNames.length === 0
+                        ? "Sem nomes pré-cadastrados para identificar recusas individuais."
+                        : "Ninguém recusou."}
+                    </p>
+                  ) : (
+                    <ul className="text-sm space-y-0.5">
+                      {recusadosDerivados.map((n, i) => (
+                        <li key={i} className="serif italic text-charcoal/60 line-through">
+                          {n}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+          {convidado.mensagem && (
+            <p className="text-xs text-charcoal/60 italic border-l-2 border-rose/30 pl-2">
+              "{convidado.mensagem}"
             </p>
-            {(convidado.acompanhantes || []).length === 0 ? (
-              <p className="text-xs text-charcoal/40 italic">Ainda sem confirmações.</p>
-            ) : (
-              <ul className="text-sm space-y-0.5">
-                {(convidado.acompanhantes || []).map((n, i) => (
-                  <li key={i} className="serif italic">
-                    ✅ {n}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {convidado.mensagem && (
-              <p className="text-xs text-charcoal/60 italic mt-3 border-l-2 border-rose/30 pl-2">
-                "{convidado.mensagem}"
-              </p>
-            )}
-          </div>
+          )}
+
 
           <div>
             <p className="mono text-[10px] uppercase tracking-widest text-charcoal/50 mb-2">
