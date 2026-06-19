@@ -252,10 +252,10 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
     }
 
     const csv = rows
-      .map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(","))
+      .map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(";"))
       .join("\n");
-    // BOM para Excel reconhecer UTF-8
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    // BOM para Excel reconhecer UTF-8 + sep=; para forçar separador de colunas
+    const blob = new Blob(["\uFEFFsep=;\n" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
