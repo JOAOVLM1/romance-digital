@@ -174,40 +174,88 @@ export function AdminConvidados({ convidados }: { convidados: Convidado[] }) {
   }
 
   const exportCSV = () => {
-    const rows = [
-      [
-        "nome",
-        "email",
-        "telefone",
-        "allowed_seats",
-        "confirmed_seats",
-        "attendees",
-        "expected",
-        "status",
-        "confirmado_em",
-        "rsvp_link",
-        "codigo_acesso",
-        "mensagem",
-      ],
-      ...convidados.map((c) => [
-        c.nome,
-        c.email || "",
-        c.telefone || "",
-        c.lugares,
-        c.vagas_confirmadas,
-        (c.acompanhantes || []).join(" | "),
-        (c.expected_attendees || []).map((e) => e.name).filter(Boolean).join(" | "),
-        c.rsvp_status,
-        c.confirmado_em || "",
-        rsvpUrl(c.rsvp_token),
-        c.codigo_acesso || "",
-        (c.mensagem || "").replace(/[\r\n,]/g, " "),
-      ]),
+    const header = [
+      "convite",
+      "nome_convidado",
+      "confirmado",
+      "recusado",
+      "email",
+      "telefone",
+      "status_convite",
+      "vagas_permitidas",
+      "vagas_confirmadas",
+      "confirmado_em",
+      "rsvp_link",
+      "codigo_acesso",
+      "mensagem",
     ];
+    const rows: (string | number)[][] = [header];
+
+    for (const c of convidados) {
+      const expected = (c.expected_attendees || []).map((e) => e.name).filter(Boolean);
+      const confirmados = (c.acompanhantes || []).map((n) => String(n).trim()).filter(Boolean);
+      const confirmadosLower = new Set(confirmados.map((n) => n.toLowerCase()));
+
+      // Build per-attendee rows
+      const nomes: { nome: string; confirmado: boolean; recusado: boolean }[] = [];
+
+      if (c.rsvp_status === "confirmado") {
+        if (expected.length > 0) {
+          for (const nome of expected) {
+            const ok = confirmadosLower.has(nome.toLowerCase());
+            nomes.push({ nome, confirmado: ok, recusado: !ok });
+          }
+          // Confirmados extras que não estavam no expected
+          for (const nome of confirmados) {
+            if (!expected.some((e) => e.toLowerCase() === nome.toLowerCase())) {
+              nomes.push({ nome, confirmado: true, recusado: false });
+            }
+          }
+        } else {
+          for (const nome of confirmados) {
+            nomes.push({ nome, confirmado: true, recusado: false });
+          }
+        }
+      } else if (c.rsvp_status === "recusado") {
+        const lista = expected.length > 0 ? expected : [c.nome];
+        for (const nome of lista) {
+          nomes.push({ nome, confirmado: false, recusado: true });
+        }
+      } else {
+        const lista = expected.length > 0 ? expected : [c.nome];
+        for (const nome of lista) {
+          nomes.push({ nome, confirmado: false, recusado: false });
+        }
+      }
+
+      if (nomes.length === 0) {
+        nomes.push({ nome: c.nome, confirmado: false, recusado: false });
+      }
+
+      for (const n of nomes) {
+        rows.push([
+          c.nome,
+          n.nome,
+          n.confirmado ? "Sim" : "Não",
+          n.recusado ? "Sim" : "Não",
+          c.email || "",
+          c.telefone || "",
+          c.rsvp_status,
+          c.lugares,
+          c.vagas_confirmadas,
+          c.confirmado_em || "",
+          rsvpUrl(c.rsvp_token),
+          c.codigo_acesso || "",
+          (c.mensagem || "").replace(/[\r\n,]/g, " "),
+        ]);
+      }
+    }
+
     const csv = rows
       .map((r) => r.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(","))
       .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    // BOM para Excel reconhecer UTF-8
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
